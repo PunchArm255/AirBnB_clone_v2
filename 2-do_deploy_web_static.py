@@ -1,62 +1,49 @@
 #!/usr/bin/python3
-"""
-This scripty distributes web static archives to web servers
-"""
-
+# Fabfile distributes archives to web servers
+import os.path
 from fabric.api import env
+from fabric.api import put
+from fabric.api import run
 
-env.hosts = ['54.242.98.93', '35.168.3.68']
+env.hosts = ["104.196.168.90", "35.196.46.172"]
 
 
 def do_deploy(archive_path):
+    """Distributes an archive to a web server.
+
+    Args:
+        archive_path (str): The path of the archive to distribute.
+    Returns:
+        If the file doesn't exist at archive_path or an error occurs - False.
+        Otherwise - True.
     """
-    Ups archives to env.hosts & does the decompression
-    """
-    from fabric.api import run, put
-    import re
+    if os.path.isfile(archive_path) is False:
+        return False
+    file = archive_path.split("/")[-1]
+    name = file.split(".")[0]
 
-    if not archive_path:
+    if put(archive_path, "/tmp/{}".format(file)).failed is True:
         return False
-
-    # get folder name where to uncompress archive
-    match = re.compile(r'.*/(\w+).tgz$').search(archive_path)
-    if not match:
+    if run("rm -rf /data/web_static/releases/{}/".
+           format(name)).failed is True:
         return False
-    folder = match.group(1)
-
-    # upload archive to server
-    ret = put(archive_path, '/tmp/')
-    if not ret.succeeded:
+    if run("mkdir -p /data/web_static/releases/{}/".
+           format(name)).failed is True:
         return False
-
-    # uncompress archive
-    ret = run("mkdir -p /data/web_static/releases/{}".format(folder))
-    if not ret.succeeded:
+    if run("tar -xzf /tmp/{} -C /data/web_static/releases/{}/".
+           format(file, name)).failed is True:
         return False
-    ret = run("tar -xzf /tmp/{}.tgz -C \
-               /data/web_static/releases/{}".format(folder, folder))
-    if not ret.succeeded:
+    if run("rm /tmp/{}".format(file)).failed is True:
         return False
-
-    # delete archive from server & move files
-    ret = run("rm /tmp/{}.tgz".format(folder))
-    if not ret.succeeded:
+    if run("mv /data/web_static/releases/{}/web_static/* "
+           "/data/web_static/releases/{}/".format(name, name)).failed is True:
         return False
-    ret = run("mv /data/web_static/releases/{}/web_static/* \
-               /data/web_static/releases/{}/".format(folder, folder))
-    if not ret.succeeded:
+    if run("rm -rf /data/web_static/releases/{}/web_static".
+           format(name)).failed is True:
         return False
-    ret = run("rm -rf /data/web_static/releases/{}/web_static/".format(folder))
-    if not ret.succeeded:
+    if run("rm -rf /data/web_static/current").failed is True:
         return False
-
-    # delete symlink and create new one
-    ret = run("rm -rf /data/web_static/current")
-    if not ret.succeeded:
+    if run("ln -s /data/web_static/releases/{}/ /data/web_static/current".
+           format(name)).failed is True:
         return False
-    ret = run("ln -fs /data/web_static/releases/{}/ \
-               /data/web_static/current".format(folder))
-    if not ret.succeeded:
-        return False
-
     return True
